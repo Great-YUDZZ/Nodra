@@ -937,16 +937,34 @@ export const useStore = create<AppStore>((set, get) => ({
 
       set({ isDetectingModels: true });
       try {
-        const targetModelsUrl = getModelsEndpoint(url);
-        const headers: Record<string, string> = {};
-        if (key.trim()) {
-          headers.Authorization = `Bearer ${key.trim()}`;
+        let rawList: any[] = [];
+        const isTauri = typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__);
+        if (isTauri) {
+          try {
+            const { invoke } = await import('@tauri-apps/api/core');
+            const nativeModels = await invoke<any[]>('fetch_endpoint_models', {
+              baseUrl: url,
+              apiKey: key.trim() || null,
+            });
+            if (Array.isArray(nativeModels) && nativeModels.length > 0) {
+              rawList = nativeModels;
+            }
+          } catch (e) {
+            console.warn('Native fetch_endpoint_models failed, falling back to browser fetch:', e);
+          }
         }
-        const res = await fetch(targetModelsUrl, { headers });
-        if (!res.ok) throw new Error(`Status ${res.status}`);
-        const rawText = await res.text();
-        const json = parseRobustJson<any>(rawText);
-        const rawList = Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : [];
+        if (rawList.length === 0) {
+          const targetModelsUrl = getModelsEndpoint(url);
+          const headers: Record<string, string> = {};
+          if (key.trim()) {
+            headers.Authorization = `Bearer ${key.trim()}`;
+          }
+          const res = await fetch(targetModelsUrl, { headers });
+          if (!res.ok) throw new Error(`Status ${res.status}`);
+          const rawText = await res.text();
+          const json = parseRobustJson<any>(rawText);
+          rawList = Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : [];
+        }
         const detected: ModelOption[] = rawList
           .filter((m: any) => m && m.id && !String(m.id).toLowerCase().includes('embedding'))
           .map((m: { id: string; context_length?: number }) => ({
@@ -1024,16 +1042,37 @@ export const useStore = create<AppStore>((set, get) => ({
             : 'Local Proxy');
 
       try {
-        const targetModelsUrl = getModelsEndpoint(url);
-        const headers: Record<string, string> = {};
-        if (key.trim()) {
-          headers.Authorization = `Bearer ${key.trim()}`;
+        let rawList: any[] = [];
+        const isTauri = typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__);
+        if (isTauri) {
+          try {
+            const { invoke } = await import('@tauri-apps/api/core');
+            const nativeModels = await invoke<any[]>('fetch_endpoint_models', {
+              baseUrl: url,
+              apiKey: key.trim() || null,
+            });
+            if (Array.isArray(nativeModels) && nativeModels.length > 0) {
+              rawList = nativeModels;
+            }
+          } catch (e) {
+            console.warn('Native fetch_endpoint_models failed for endpoint, falling back to browser fetch:', e);
+          }
         }
-        const res = await fetch(targetModelsUrl, { headers });
-        if (res.ok) {
-          const rawText = await res.text();
-          const json = parseRobustJson<any>(rawText);
-          const rawList = Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : [];
+        if (rawList.length === 0) {
+          const targetModelsUrl = getModelsEndpoint(url);
+          const headers: Record<string, string> = {};
+          if (key.trim()) {
+            headers.Authorization = `Bearer ${key.trim()}`;
+          }
+          const res = await fetch(targetModelsUrl, { headers });
+          if (res.ok) {
+            const rawText = await res.text();
+            const json = parseRobustJson<any>(rawText);
+            rawList = Array.isArray(json.data) ? json.data : Array.isArray(json) ? json : [];
+          }
+        }
+
+        if (rawList.length > 0) {
           rawList
             .filter((m: any) => m && m.id && !String(m.id).toLowerCase().includes('embedding'))
             .forEach((m: { id: string; context_length?: number; max_context_length?: number }) => {

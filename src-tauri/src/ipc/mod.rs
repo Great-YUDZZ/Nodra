@@ -3493,6 +3493,114 @@ pub async fn discover_lmstudio_local() -> Result<LmStudioDiscoveryResult, String
     })
 }
 
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CustomDiscoveredModel {
+    pub id: String,
+    pub name: String,
+    pub context_length: Option<u32>,
+    pub vision: bool,
+    pub base_url: String,
+}
+
+#[tauri::command]
+pub async fn fetch_endpoint_models(
+    base_url: String,
+    api_key: Option<String>,
+) -> Result<Vec<CustomDiscoveredModel>, String> {
+    let clean_base = base_url.trim().trim_end_matches('/');
+    if clean_base.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let models_url = if clean_base.ends_with("/models") {
+        clean_base.to_string()
+    } else {
+        format!("{}/models", clean_base)
+    };
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
+
+    let mut req = client.get(&models_url);
+    if let Some(ref k) = api_key {
+        let trimmed_key = k.trim();
+        if !trimmed_key.is_empty() {
+            req = req.header("Authorization", format!("Bearer {}", trimmed_key));
+        }
+    }
+
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| format!("Gagal menghubungi endpoint: {}", e))?;
+
+    if !resp.status().is_success() {
+        return Err(format!("Server mengembalikan status HTTP {}", resp.status().as_u16()));
+    }
+
+    let raw_text = resp
+        .text()
+        .await
+        .map_err(|e| format!("Gagal membaca body response: {}", e))?;
+
+    let cleaned = raw_text
+        .lines()
+        .filter(|l| !l.trim().starts_with("data:") || l.trim().starts_with("data: {"))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let json: serde_json::Value = serde_json::from_str(&cleaned)
+        .or_else(|_| serde_json::from_str(&raw_text))
+        .map_err(|e| format!("Gagal mem-parsing format JSON response model: {}", e))?;
+
+    let mut result: Vec<CustomDiscoveredModel> = Vec::new();
+    let raw_list = if let Some(arr) = json.get("data").and_then(|d| d.as_array()) {
+        arr.clone()
+    } else if let Some(arr) = json.as_array() {
+        arr.clone()
+    } else {
+        Vec::new()
+    };
+
+    for item in raw_list {
+        if let Some(id) = item.get("id").and_then(|v| v.as_str()) {
+            let trimmed_id = id.trim().to_string();
+            if trimmed_id.is_empty() || trimmed_id.to_lowercase().contains("embedding") {
+                continue;
+            }
+            if !result.iter().any(|m| m.id == trimmed_id) {
+                let lower = trimmed_id.to_lowercase();
+                let is_vision = lower.contains("vision")
+                    || lower.contains("omni")
+                    || lower.contains("-vl")
+                    || lower.contains("llava")
+                    || item.get("capabilities").and_then(|c| c.get("vision")).and_then(|v| v.as_bool()).unwrap_or(false);
+
+                let ctx = item
+                    .get("context_length")
+                    .or_else(|| item.get("max_context_length"))
+                    .or_else(|| item.get("capabilities").and_then(|c| c.get("contextWindow")))
+                    .and_then(|v| v.as_u64())
+                    .map(|v| v as u32);
+
+                result.push(CustomDiscoveredModel {
+                    id: trimmed_id.clone(),
+                    name: trimmed_id,
+                    context_length: ctx,
+                    vision: is_vision,
+                    base_url: clean_base.to_string(),
+                });
+            }
+        }
+    }
+
+    Ok(result)
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;

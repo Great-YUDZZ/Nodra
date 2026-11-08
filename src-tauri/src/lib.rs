@@ -246,6 +246,7 @@ pub fn run() {
             ipc::app_close,
             ipc::app_is_maximized,
             ipc::discover_lmstudio_local,
+            ipc::fetch_endpoint_models,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
