@@ -2,6 +2,18 @@
 
 Semua perubahan penting pada proyek Nodra dicatat dalam dokumen ini.
 
+## [v0.4.13] - 2026-11-08
+
+### Native IPC Custom Endpoint Model Discovery
+- **Native Tauri IPC Model Discovery (fetch_endpoint_models)**:
+  - Mengganti pemindaian model via browser window.fetch() yang terblokir CORS/Private Network sandbox di WebView2 Windows dengan IPC bridge native Rust (reqwest + Tokio async).
+  - Berhasil menghubungkan dan mendeteksi seluruh model OpenAI-compatible dari runner/proxy lokal (seperti 9router port 20128 dengan 114 model, LM Studio, Ollama, dan LocalAI).
+  - Parser JSON toleran yang mengekstrak metadata nama model, context length, kapabilitas vision, dan menyaring model embedding secara otomatis.
+- **State Management & Auto Fallback**:
+  - Integrasi native invoke pada fetchAvailableModels di useStore.ts dengan fallback transparan ke browser fetch jika dijalankan di luar runtime desktop.
+
+---
+
 ## [v0.4.12] - 2026-11-07
 
 ### Fluid Viewport Box Model & Exhaustive Windows Silent Subprocesses
